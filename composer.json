@@ -1,0 +1,51 @@
+{
+    "name": "laravel-query-macros/laravel-query-macros",
+    "description": "A collection of useful, production-ready Eloquent query macros that solve common pain points",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "laravel",
+        "eloquent",
+        "query",
+        "macros",
+        "database"
+    ],
+    "require": {
+        "php": "^8.2",
+        "illuminate/database": "^10.0|^11.0",
+        "illuminate/support": "^10.0|^11.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^8.0|^9.0",
+        "pestphp/pest": "^2.0",
+        "pestphp/pest-plugin-laravel": "^2.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "LaravelQueryMacros\\QueryMacros\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "LaravelQueryMacros\\QueryMacros\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "LaravelQueryMacros\\QueryMacros\\QueryMacrosServiceProvider"
+            ]
+        }
+    },
+    "scripts": {
+        "test": "pest",
+        "test-coverage": "pest --coverage"
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
