@@ -1,15 +1,31 @@
 {
-    "name": "laravel-query-macros/laravel-query-macros",
-    "description": "A collection of useful, production-ready Eloquent query macros that solve common pain points",
-    "type": "library",
-    "license": "MIT",
+    "name": "issam-elkhadir/laravel-query-macros",
+    "description": "A collection of useful, production-ready Eloquent query macros for Laravel",
     "keywords": [
         "laravel",
         "eloquent",
         "query",
         "macros",
-        "database"
+        "database",
+        "search",
+        "json",
+        "like"
     ],
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Issam Elkhadir",
+            "email": "issamelkhader55@gmail.com",
+            "homepage": "https://github.com/issamElkhadirYC",
+            "role": "Developer"
+        }
+    ],
+    "homepage": "https://github.com/issamElkhadirYC/laravel-query-macros",
+    "support": {
+        "issues": "https://github.com/issamElkhadirYC/laravel-query-macros/issues",
+        "source": "https://github.com/issamElkhadirYC/laravel-query-macros"
+    },
     "require": {
         "php": "^8.2",
         "illuminate/database": "^10.0|^11.0",
@@ -30,7 +46,12 @@
             "LaravelQueryMacros\\QueryMacros\\Tests\\": "tests/"
         }
     },
+    "scripts": {
+        "test": "vendor/bin/pest",
+        "test-coverage": "vendor/bin/pest --coverage"
+    },
     "config": {
+        "sort-packages": true,
         "allow-plugins": {
             "pestphp/pest-plugin": true
         }
@@ -42,10 +63,6 @@
             ]
         }
     },
-    "scripts": {
-        "test": "pest",
-        "test-coverage": "pest --coverage"
-    },
-    "minimum-stability": "dev",
+    "minimum-stability": "stable",
     "prefer-stable": true
 }

@@ -12,30 +12,21 @@ use LaravelQueryMacros\QueryMacros\Macros\WhereJsonContainsAnyMacro;
 
 class QueryMacrosServiceProvider extends ServiceProvider
 {
-    /**
-     * Register any application services.
-     */
     public function register(): void
     {
         //
     }
 
-    /**
-     * Bootstrap any application services.
-     */
     public function boot(): void
     {
-        // Register whereLike macro
-        Builder::macro('whereLike', function (string $column, string $value, bool $caseSensitive = false) {
-            return WhereLikeMacro::apply($this, $column, $value, $caseSensitive);
+        Builder::macro('whereLike', function (string $column, string $value, bool $caseSensitive = false, bool $escapeWildcards = false) {
+            return WhereLikeMacro::apply($this, $column, $value, $caseSensitive, $escapeWildcards);
         });
 
-        // Register orWhereLike macro
-        Builder::macro('orWhereLike', function (string $column, string $value, bool $caseSensitive = false) {
-            return OrWhereLikeMacro::apply($this, $column, $value, $caseSensitive);
+        Builder::macro('orWhereLike', function (string $column, string $value, bool $caseSensitive = false, bool $escapeWildcards = false) {
+            return OrWhereLikeMacro::apply($this, $column, $value, $caseSensitive, $escapeWildcards);
         });
 
-        // Register whereJsonContainsAny macro
         Builder::macro('whereJsonContainsAny', function (string $column, array $values) {
             return WhereJsonContainsAnyMacro::apply($this, $column, $values);
         });

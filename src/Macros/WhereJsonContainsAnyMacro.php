@@ -5,121 +5,167 @@ declare(strict_types=1);
 namespace LaravelQueryMacros\QueryMacros\Macros;
 
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\DB;
 
-/**
- * Macro: whereJsonContainsAny
- *
- * Check if a JSON column contains ANY of the provided values.
- * Useful for filtering records where JSON arrays/objects contain at least one matching value.
- *
- * @example
- * // Find users with any of these tags
- * User::whereJsonContainsAny('tags', ['admin', 'moderator', 'editor'])->get();
- *
- * // Find products in any of these categories
- * Product::whereJsonContainsAny('categories', [1, 2, 3])->get();
- *
- * @why-use-this
- * Laravel's whereJsonContains() only checks for a single value. This macro allows
- * checking for multiple values in a single, readable query.
- */
 class WhereJsonContainsAnyMacro
 {
     /**
-     * Apply the whereJsonContainsAny macro to the query builder.
+     * Add a where clause that checks if a JSON column contains ANY of the provided values.
+     * 
+     * This macro works with JSON arrays and checks if at least one value from the provided
+     * array exists in the JSON column.
+     * 
+     * Performance note: JSON operations can be slower than regular column searches.
+     * Consider adding JSON indexes for frequently queried columns.
      *
-     * @param Builder $query The query builder instance
-     * @param string $column The JSON column to search in
-     * @param array $values Array of values to check for (at least one must exist)
+     * @param Builder $query
+     * @param string $column The JSON column name
+     * @param array $values Array of values to search for (any match will return the record)
      * @return Builder
      */
     public static function apply(Builder $query, string $column, array $values): Builder
     {
+        // Return no results if empty array provided
         if (empty($values)) {
-            // If no values provided, return query that matches nothing
             return $query->whereRaw('1 = 0');
         }
 
-        $driver = DB::getDriverName();
+        $connection = $query->getConnection();
+        $driver = $connection->getDriverName();
 
-        // Database-specific implementation
         return match ($driver) {
-            'mysql' => self::applyForMySQL($query, $column, $values),
+            'mysql', 'mariadb' => self::applyForMySQL($query, $column, $values),
             'pgsql' => self::applyForPostgreSQL($query, $column, $values),
             'sqlite' => self::applyForSQLite($query, $column, $values),
+            'sqlsrv' => self::applyForSQLServer($query, $column, $values),
             default => self::applyForMySQL($query, $column, $values),
         };
     }
 
     /**
-     * Apply for MySQL database.
+     * MySQL/MariaDB implementation using JSON_CONTAINS with proper array wrapping.
      */
     private static function applyForMySQL(Builder $query, string $column, array $values): Builder
     {
         $grammar = $query->getConnection()->getQueryGrammar();
         $wrappedColumn = $grammar->wrap($column);
         
-        $conditions = collect($values)->map(function () use ($wrappedColumn) {
-            return "JSON_CONTAINS({$wrappedColumn}, ?)";
-        })->implode(' OR ');
-
+        // Build OR conditions for each value
+        $conditions = [];
         $bindings = [];
+        
         foreach ($values as $value) {
+            // JSON_CONTAINS needs the search value as a JSON-encoded string
+            // For checking if array contains value: JSON_CONTAINS(column, '"value"')
+            $conditions[] = "JSON_CONTAINS({$wrappedColumn}, ?)";
             $bindings[] = json_encode($value, JSON_UNESCAPED_UNICODE);
         }
-
-        return $query->whereRaw("({$conditions})", $bindings);
+        
+        $conditionsString = implode(' OR ', $conditions);
+        
+        return $query->whereRaw("({$conditionsString})", $bindings);
     }
 
     /**
-     * Apply for PostgreSQL database.
+     * PostgreSQL implementation using the ?| (key exists any) operator.
+     * 
+     * Note: This works best when the JSON column contains an array of scalar values.
+     * For nested structures, different operators may be needed.
      */
     private static function applyForPostgreSQL(Builder $query, string $column, array $values): Builder
     {
         $grammar = $query->getConnection()->getQueryGrammar();
         $wrappedColumn = $grammar->wrap($column);
         
-        $conditions = collect($values)->map(function () use ($wrappedColumn) {
-            return "{$wrappedColumn}::jsonb @> ?::jsonb";
-        })->implode(' OR ');
-
-        $bindings = [];
-        foreach ($values as $value) {
-            $bindings[] = json_encode($value, JSON_UNESCAPED_UNICODE);
-        }
-
-        return $query->whereRaw("({$conditions})", $bindings);
+        // Convert values to strings for the ?| operator
+        $stringValues = array_map(function ($value) {
+            return is_string($value) ? $value : json_encode($value);
+        }, $values);
+        
+        // PostgreSQL ?| operator checks if any of the provided keys/values exist
+        // We need to use the array constructor syntax
+        $placeholders = implode(', ', array_fill(0, count($stringValues), '?'));
+        
+        return $query->whereRaw(
+            "{$wrappedColumn}::jsonb ?| array[{$placeholders}]::text[]",
+            $stringValues
+        );
     }
 
     /**
-     * Apply for SQLite database.
+     * SQLite implementation using json_each to iterate through array elements.
+     * 
+     * SQLite's JSON support is more limited, so we use json_each to iterate
+     * through the array and check for matches.
      */
     private static function applyForSQLite(Builder $query, string $column, array $values): Builder
     {
         $grammar = $query->getConnection()->getQueryGrammar();
         $wrappedColumn = $grammar->wrap($column);
         
-        // SQLite json_each extracts values from JSON arrays
-        // json_each.value returns the actual value (string without quotes, number as-is)
-        // We compare the value directly with our search values
-        $conditions = collect($values)->map(function () use ($wrappedColumn) {
-            return "EXISTS (SELECT 1 FROM json_each({$wrappedColumn}) WHERE json_each.value = ?)";
-        })->implode(' OR ');
-
+        $conditions = [];
         $bindings = [];
+        
         foreach ($values as $value) {
-            // json_each.value returns the actual value, so for strings we use the string directly
-            // For numbers, we use the number directly
             if (is_string($value)) {
+                // For strings, compare directly
+                $conditions[] = "EXISTS (
+                    SELECT 1 FROM json_each({$wrappedColumn}) 
+                    WHERE json_each.value = ?
+                )";
                 $bindings[] = $value;
+            } elseif (is_int($value) || is_float($value)) {
+                // For numbers, use json_each.value which preserves type
+                $conditions[] = "EXISTS (
+                    SELECT 1 FROM json_each({$wrappedColumn}) 
+                    WHERE json_each.value = ?
+                )";
+                $bindings[] = $value;
+            } elseif (is_bool($value)) {
+                // For booleans, SQLite stores as 0/1 in json_each
+                $conditions[] = "EXISTS (
+                    SELECT 1 FROM json_each({$wrappedColumn}) 
+                    WHERE json_each.value = ?
+                )";
+                $bindings[] = $value ? 1 : 0;
             } else {
-                // For non-strings, json_each returns them as their type, so we use the value directly
-                $bindings[] = $value;
+                // For other types, compare as JSON
+                $conditions[] = "EXISTS (
+                    SELECT 1 FROM json_each({$wrappedColumn}) 
+                    WHERE json_each.value = json(?)
+                )";
+                $bindings[] = json_encode($value, JSON_UNESCAPED_UNICODE);
             }
         }
+        
+        $conditionsString = implode(' OR ', $conditions);
+        
+        return $query->whereRaw("({$conditionsString})", $bindings);
+    }
 
-        return $query->whereRaw("({$conditions})", $bindings);
+    /**
+     * SQL Server implementation using OPENJSON.
+     * 
+     * SQL Server 2016+ has JSON support via OPENJSON function.
+     */
+    private static function applyForSQLServer(Builder $query, string $column, array $values): Builder
+    {
+        $grammar = $query->getConnection()->getQueryGrammar();
+        $wrappedColumn = $grammar->wrap($column);
+        
+        $conditions = [];
+        $bindings = [];
+        
+        foreach ($values as $value) {
+            // Use OPENJSON to parse the JSON array and check if value exists
+            $conditions[] = "EXISTS (
+                SELECT 1 FROM OPENJSON({$wrappedColumn}) 
+                WHERE value = ?
+            )";
+            $bindings[] = is_string($value) ? $value : json_encode($value);
+        }
+        
+        $conditionsString = implode(' OR ', $conditions);
+        
+        return $query->whereRaw("({$conditionsString})", $bindings);
     }
 }
-
